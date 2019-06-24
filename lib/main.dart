@@ -1,16 +1,20 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
+
 import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'dart:ui' as ui;
 
-import 'package:tinycolor/tinycolor.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:sliding_up_panel/sliding_up_panel.dart';
+import 'package:flutter_sparkline/flutter_sparkline.dart';
 
-import 'models/station_list.dart';
+import 'package:luftinfo_app/services/map_icon.service.dart';
+import 'package:luftinfo_app/services/measurementdata.serivce.dart';
+import 'package:luftinfo_app/models/station_list.dart';
+import 'package:luftinfo_app/models/processed_station.dart';
+import 'package:tinycolor/tinycolor.dart';
 
 void main() => runApp(MyApp());
 
@@ -19,7 +23,8 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      debugShowCheckedModeBanner: false,
+      title: 'LuftinfoApp',
       theme: ThemeData(
         // is not restarted.
         primarySwatch: Colors.blue,
@@ -39,38 +44,56 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+  double _panelHeightOpen = 310.0;
+  double _panelHeightClosed = 110.0;
+  MarkerId selectedMarker;
+  ProcessedStation selectedStation;
 
-  void _incrementCounter() {
+  void setStation(MarkerId marker, ProcessedStation station) {
     setState(() {
-      _counter++;
+      selectedMarker = marker;
+      selectedStation = station;
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title),
+    return Material(
+      child: Stack(
+        alignment: Alignment.topCenter,
+        children: <Widget>[
+          SlidingUpPanel(
+            maxHeight: _panelHeightOpen,
+            minHeight: _panelHeightClosed,
+            parallaxEnabled: true,
+            parallaxOffset: .5,
+            body: MapWidget(
+              setStation: setStation,
+            ),
+            panel: OverlayWidget(
+              selectedStation: selectedStation,
+            ),
+            borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(4.0), topRight: Radius.circular(4.0)),
+          ),
+        ],
       ),
-      body: MapWidget(),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: Icon(Icons.add),
-      ), 
     );
   }
 }
 
 class MapWidget extends StatefulWidget {
+  MapWidget({this.setStation});
+  final setStation;
+
   @override
   _MapWidgetState createState() => _MapWidgetState();
 }
 
 class _MapWidgetState extends State<MapWidget> {
   static const CACHING_SERVER_URL = 'https://probably.one:4433/ttl3600?';
-  static const NILU_LAST_HOUR = 'https://api.nilu.no/obs/utd?components=no2;pm10;so2;co;o3;pm2.5';
+  static const NILU_LAST_HOUR =
+      'https://api.nilu.no/obs/utd?components=no2;pm10;so2;co;o3;pm2.5';
 
   static final CameraPosition _cameraPosition = CameraPosition(
     target: LatLng(59.927454, 10.733687),
@@ -81,7 +104,6 @@ class _MapWidgetState extends State<MapWidget> {
 
   Map<MarkerId, Marker> markers = <MarkerId, Marker>{};
   MarkerId selectedMarker;
-  int _markerIdCounter = 1;
 
   @override
   void initState() {
@@ -91,83 +113,40 @@ class _MapWidgetState extends State<MapWidget> {
 
   void loadData() async {
     _mapStyle = await rootBundle.loadString('assets/map_style.txt');
-    fetchStations();
+    addMarkers();
   }
 
-  void fetchStations() async {
-    final response = await http.get(CACHING_SERVER_URL + NILU_LAST_HOUR);
-    if (response.statusCode == 200) {
-      StationsList stationsList = StationsList.fromJson(json.decode(response.body));
-      stationsList.stations.forEach((s) async {
-        final Uint8List markerIcon = await createIcon(s.value.round(), caqiToColorRGBA(s.value));
-        final String markerIdVal = 'marker_id_$_markerIdCounter';
-        print(markerIdVal);
-        _markerIdCounter++;
-        final MarkerId markerId = MarkerId(markerIdVal);
+  void addMarkers() async {
+    List<ProcessedStation> processedStations =
+        await MeasurementDataService.fetchAndProcessStations();
 
-        final Marker marker = Marker(
+    widget.setStation(null, processedStations[0]);
+
+    processedStations.forEach((s) async {
+      final Uint8List markerIcon = await MapIconService.createIcon(
+          s.components[0].caqi,
+          MeasurementDataService.caqiToColorRGBA(s.components[0].caqi));
+      final MarkerId markerId = MarkerId(s.station);
+
+      final Marker marker = Marker(
           markerId: markerId,
           position: LatLng(
             s.latitude,
             s.longitude,
           ),
           icon: BitmapDescriptor.fromBytes(markerIcon),
-        );
+          onTap: () {
+            widget.setStation(
+                markerId,
+                processedStations
+                    .firstWhere((y) => y.station == markerId.value));
+          });
 
-        setState(() {
-          markers[markerId] = marker;
-        });
+      setState(() {
+        markers[markerId] = marker;
       });
-
-    } else {
-      throw Exception('Failed to fetch stations');
-    }
+    });
   }
-
-  Future<Uint8List> createIcon(int value, String color) async {
-    final double width = 120;
-    final double height = 120;
-    final colorBackground = Color(int.parse(color.substring(1, 7), radix: 16) + 0xFF000000);
-
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder, Rect.fromPoints(Offset(0.0, 0.0), Offset(width, height)));
-    final paint = Paint()
-      ..color = colorBackground
-      ..style = PaintingStyle.fill;
-    final paintStroke = Paint()
-      ..color = TinyColor(colorBackground).darken(5).color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-    final painter = TextPainter(textDirection: TextDirection.ltr, textAlign: TextAlign.center);
-    final center  = new Offset(width/2, height/2);
-    final radius  = min(width/2, height/2);
-
-    canvas.drawCircle(center, radius, paint);
-    canvas.drawCircle(center, radius - 2, paintStroke);
-    painter.text = TextSpan(
-      text: value.toString(),
-      style: TextStyle(fontSize: 45.0, color: Colors.white, fontWeight: FontWeight.bold),
-    );
-
-    painter.layout(minWidth: width, maxWidth: width);
-    painter.paint(
-      canvas,
-      Offset((width * 0.5) - painter.width * 0.5,
-        (height * .5) - painter.height * 0.5)
-    );
-
-    final img = await recorder.endRecording().toImage(width.round(), height.round());
-    final data = await img.toByteData(format: ui.ImageByteFormat.png);
-    return data.buffer.asUint8List();
-  }
-
-  caqiToColorRGBA(double caqi) {
-    if (caqi < 25) return '#78ba6a';
-    if (caqi < 50) return '#acbc53';
-    if (caqi < 75) return '#e6b628';
-    if (caqi < 100) return '#fa780a';
-    return '#95001e';
-}
 
   @override
   Widget build(BuildContext context) {
@@ -178,5 +157,131 @@ class _MapWidgetState extends State<MapWidget> {
       },
       markers: Set<Marker>.of(markers.values),
     );
+  }
+}
+
+class OverlayWidget extends StatefulWidget {
+  OverlayWidget({this.selectedStation});
+  final ProcessedStation selectedStation;
+  @override
+  _OverlayWidgetState createState() => _OverlayWidgetState();
+}
+
+class _OverlayWidgetState extends State<OverlayWidget> {
+  var data = [0.0, 1.0, 1.5, 2.0, 0.0, 0.0, -0.5, -1.0, -0.5, 0.0, 0.0];
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SizedBox(
+            height: 19.0,
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Container(
+                width: 18,
+                height: 3,
+                decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.all(Radius.circular(5.0))),
+              ),
+            ],
+          ),
+          SizedBox(
+            height: 10.0,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 0, horizontal: 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  widget?.selectedStation?.station != null
+                      ? widget?.selectedStation?.station
+                      : '',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w400,
+                      letterSpacing: 0.3,
+                      fontSize: 17.0,
+                      color: Colors.black87),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 0, horizontal: 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  widget?.selectedStation?.station != null
+                      ? MeasurementDataService.caqiToText(
+                          widget?.selectedStation?.components[0].caqi)
+                      : '',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w200,
+                      fontSize: 34.0,
+                      color: TinyColor.fromString(
+                              MeasurementDataService.caqiToColorRGBA(
+                                  widget?.selectedStation?.station != null
+                                      ? widget
+                                          ?.selectedStation?.components[0].caqi
+                                      : 0))
+                          .color),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 15, 0, 0),
+                  child: Text(
+                    'air quality',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w300,
+                        letterSpacing: 0.6,
+                        fontSize: 14.0,
+                        color: TinyColor.fromString('#a5a5a5').color),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 20.0,
+          ),
+          Divider(
+            color: TinyColor.fromString('#e5e5e5').color,
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 15, 0, 0),
+            child: Text(
+              'PM2.5',
+              style: TextStyle(
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 0.6,
+                  fontSize: 14.0,
+                  color: TinyColor.fromString('#333').color),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(25.0),
+            child: Sparkline(
+              data: data,
+              fillMode: FillMode.below,
+              lineColor: TinyColor.fromString(
+                      MeasurementDataService.caqiToColorRGBA(
+                          widget?.selectedStation?.station != null
+                              ? widget?.selectedStation?.components[0].caqi
+                              : 0))
+                  .darken(5)
+                  .color,
+              fillColor: TinyColor.fromString(
+                      MeasurementDataService.caqiToColorRGBA(
+                          widget?.selectedStation?.station != null
+                              ? widget?.selectedStation?.components[0].caqi
+                              : 0))
+                  .color,
+            ),
+          )
+        ]);
   }
 }

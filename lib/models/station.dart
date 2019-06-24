@@ -29,7 +29,7 @@ class Station {
     this.timestep,
   });
 
-  factory Station.fromJson(Map<String, dynamic> json){
+  factory Station.fromJson(Map<String, dynamic> json) {
     return new Station(
       zone: json['zone'],
       municipality: json['municipality'],
