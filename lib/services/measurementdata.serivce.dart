@@ -11,7 +11,7 @@ class MeasurementDataService {
   static const NILU_LAST_HOUR =
       'https://api.nilu.no/obs/utd?components=no2;pm10;so2;co;o3;pm2.5';
 
-  static List<CAQI> CAQI_TABLE = [
+  static final List<CAQI> caqiTable = [
     CAQI(
         pollutant: 'PM2.5',
         vlow: [0, 15, 0, 25],
@@ -50,7 +50,7 @@ class MeasurementDataService {
         hi: [350, 500, 75, 100]),
   ];
 
-  static Future<List<ProcessedStation>> fetchAndProcessStations() async {
+  Future<List<ProcessedStation>> fetchAndProcessStations() async {
     StationsList stationsList = await fetchStations();
 
     stationsList.stations.forEach((s) {
@@ -80,7 +80,7 @@ class MeasurementDataService {
     return stationsList.processedStations;
   }
 
-  static Future<StationsList> fetchStations() async {
+  Future<StationsList> fetchStations() async {
     final response = await http.get(CACHING_SERVER_URL + NILU_LAST_HOUR);
     if (response.statusCode == 200) {
       return StationsList.fromJson(
@@ -90,32 +90,32 @@ class MeasurementDataService {
     }
   }
 
-  static int caqi(String pollutant, double value) {
+  int caqi(String pollutant, double value) {
     List<int> f = [];
     int idx = 0;
 
-    for (int i = 0; i < CAQI_TABLE.length; i++) {
-      if (CAQI_TABLE[i].pollutant == pollutant) {
+    for (int i = 0; i < caqiTable.length; i++) {
+      if (caqiTable[i].pollutant == pollutant) {
         idx = i;
         break;
       }
     }
 
-    if (value < CAQI_TABLE[idx].vlow[1]) {
-      f = CAQI_TABLE[idx].vlow;
-    } else if (value < CAQI_TABLE[idx].low[1]) {
-      f = CAQI_TABLE[idx].low;
-    } else if (value < CAQI_TABLE[idx].med[1]) {
-      f = CAQI_TABLE[idx].med;
-    } else if (value < CAQI_TABLE[idx].hi[1]) {
-      f = CAQI_TABLE[idx].hi;
+    if (value < caqiTable[idx].vlow[1]) {
+      f = caqiTable[idx].vlow;
+    } else if (value < caqiTable[idx].low[1]) {
+      f = caqiTable[idx].low;
+    } else if (value < caqiTable[idx].med[1]) {
+      f = caqiTable[idx].med;
+    } else if (value < caqiTable[idx].hi[1]) {
+      f = caqiTable[idx].hi;
     } else
       return 100;
 
     return (((f[3] - f[2]) / (f[1] - f[0])) * (value - f[0]) + f[2]).floor();
   }
 
-  static caqiToColorRGBA(int caqi) {
+  caqiToColorRGBA(int caqi) {
     if (caqi < 25) return '#78ba6a';
     if (caqi < 50) return '#acbc53';
     if (caqi < 75) return '#e6b628';
@@ -123,7 +123,7 @@ class MeasurementDataService {
     return '#95001e';
   }
 
-  static caqiToText(int caqi) {
+  caqiToText(int caqi) {
     if (caqi < 25) return 'Very good';
     if (caqi < 50) return 'Good';
     if (caqi < 75) return 'Moderate';
@@ -131,3 +131,5 @@ class MeasurementDataService {
     return 'Very bad';
   }
 }
+
+final MeasurementDataService measurementDataService = MeasurementDataService();

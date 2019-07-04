@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:luftinfo_app/bloc_provider.dart';
+import 'package:luftinfo_app/blocs/station_list.bloc.dart';
 import 'package:sliding_up_panel/sliding_up_panel.dart';
 import 'package:flutter_sparkline/flutter_sparkline.dart';
 
@@ -16,7 +18,10 @@ import 'package:luftinfo_app/models/station_list.dart';
 import 'package:luftinfo_app/models/processed_station.dart';
 import 'package:tinycolor/tinycolor.dart';
 
-void main() => runApp(MyApp());
+Future<void> main() async {
+  return runApp(
+      BlocProvider<StationListBloc>(bloc: StationListBloc(), child: MyApp()));
+}
 
 class MyApp extends StatelessWidget {
   // This widget is the root of your application.
@@ -46,15 +51,6 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   double _panelHeightOpen = 310.0;
   double _panelHeightClosed = 110.0;
-  MarkerId selectedMarker;
-  ProcessedStation selectedStation;
-
-  void setStation(MarkerId marker, ProcessedStation station) {
-    setState(() {
-      selectedMarker = marker;
-      selectedStation = station;
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -67,12 +63,8 @@ class _MyHomePageState extends State<MyHomePage> {
             minHeight: _panelHeightClosed,
             parallaxEnabled: true,
             parallaxOffset: .5,
-            body: MapWidget(
-              setStation: setStation,
-            ),
-            panel: OverlayWidget(
-              selectedStation: selectedStation,
-            ),
+            body: MapWidget(),
+            panel: OverlayWidget(),
             borderRadius: BorderRadius.only(
                 topLeft: Radius.circular(4.0), topRight: Radius.circular(4.0)),
           ),
@@ -91,10 +83,6 @@ class MapWidget extends StatefulWidget {
 }
 
 class _MapWidgetState extends State<MapWidget> {
-  static const CACHING_SERVER_URL = 'https://probably.one:4433/ttl3600?';
-  static const NILU_LAST_HOUR =
-      'https://api.nilu.no/obs/utd?components=no2;pm10;so2;co;o3;pm2.5';
-
   static final CameraPosition _cameraPosition = CameraPosition(
     target: LatLng(59.927454, 10.733687),
     zoom: 11,
@@ -113,50 +101,55 @@ class _MapWidgetState extends State<MapWidget> {
 
   void loadData() async {
     _mapStyle = await rootBundle.loadString('assets/map_style.txt');
-    addMarkers();
+    // addMarkers();
   }
 
-  void addMarkers() async {
-    List<ProcessedStation> processedStations =
-        await MeasurementDataService.fetchAndProcessStations();
+  // void addMarkers() async {
+  //   List<ProcessedStation> processedStations =
+  //       await measurementDataService.fetchAndProcessStations();
 
-    widget.setStation(null, processedStations[0]);
+  //   widget.setStation(null, processedStations[0]);
 
-    processedStations.forEach((s) async {
-      final Uint8List markerIcon = await MapIconService.createIcon(
-          s.components[0].caqi,
-          MeasurementDataService.caqiToColorRGBA(s.components[0].caqi));
-      final MarkerId markerId = MarkerId(s.station);
+  //   processedStations.forEach((s) async {
+  //     final Uint8List markerIcon = await MapIconService.createIcon(
+  //         s.components[0].caqi,
+  //         measurementDataService.caqiToColorRGBA(s.components[0].caqi));
+  //     final MarkerId markerId = MarkerId(s.station);
 
-      final Marker marker = Marker(
-          markerId: markerId,
-          position: LatLng(
-            s.latitude,
-            s.longitude,
-          ),
-          icon: BitmapDescriptor.fromBytes(markerIcon),
-          onTap: () {
-            widget.setStation(
-                markerId,
-                processedStations
-                    .firstWhere((y) => y.station == markerId.value));
-          });
+  //     final Marker marker = Marker(
+  //         markerId: markerId,
+  //         position: LatLng(
+  //           s.latitude,
+  //           s.longitude,
+  //         ),
+  //         icon: BitmapDescriptor.fromBytes(markerIcon),
+  //         onTap: () {
+  //           widget.setStation(
+  //               markerId,
+  //               processedStations
+  //                   .firstWhere((y) => y.station == markerId.value));
+  //         });
 
-      setState(() {
-        markers[markerId] = marker;
-      });
-    });
-  }
+  //     setState(() {
+  //       markers[markerId] = marker;
+  //     });
+  //   });
+  // }
 
   @override
   Widget build(BuildContext context) {
-    return GoogleMap(
-      initialCameraPosition: _cameraPosition,
-      onMapCreated: (GoogleMapController controller) {
-        controller.setMapStyle(_mapStyle);
-      },
-      markers: Set<Marker>.of(markers.values),
-    );
+    final StationListBloc bloc = BlocProvider.of<StationListBloc>(context);
+    return StreamBuilder<Map<MarkerId, Marker>>(
+        stream: bloc.markers,
+        builder: (context, snapshot) {
+          return GoogleMap(
+            initialCameraPosition: _cameraPosition,
+            onMapCreated: (GoogleMapController controller) {
+              controller.setMapStyle(_mapStyle);
+            },
+            markers: Set<Marker>.of(snapshot?.data?.values ?? []),
+          );
+        });
   }
 }
 
@@ -217,14 +210,14 @@ class _OverlayWidgetState extends State<OverlayWidget> {
               children: <Widget>[
                 Text(
                   widget?.selectedStation?.station != null
-                      ? MeasurementDataService.caqiToText(
+                      ? measurementDataService.caqiToText(
                           widget?.selectedStation?.components[0].caqi)
                       : '',
                   style: TextStyle(
                       fontWeight: FontWeight.w200,
                       fontSize: 34.0,
                       color: TinyColor.fromString(
-                              MeasurementDataService.caqiToColorRGBA(
+                              measurementDataService.caqiToColorRGBA(
                                   widget?.selectedStation?.station != null
                                       ? widget
                                           ?.selectedStation?.components[0].caqi
@@ -267,18 +260,16 @@ class _OverlayWidgetState extends State<OverlayWidget> {
             child: Sparkline(
               data: data,
               fillMode: FillMode.below,
-              lineColor: TinyColor.fromString(
-                      MeasurementDataService.caqiToColorRGBA(
-                          widget?.selectedStation?.station != null
-                              ? widget?.selectedStation?.components[0].caqi
-                              : 0))
+              lineColor: TinyColor.fromString(measurementDataService
+                      .caqiToColorRGBA(widget?.selectedStation?.station != null
+                          ? widget?.selectedStation?.components[0].caqi
+                          : 0))
                   .darken(5)
                   .color,
-              fillColor: TinyColor.fromString(
-                      MeasurementDataService.caqiToColorRGBA(
-                          widget?.selectedStation?.station != null
-                              ? widget?.selectedStation?.components[0].caqi
-                              : 0))
+              fillColor: TinyColor.fromString(measurementDataService
+                      .caqiToColorRGBA(widget?.selectedStation?.station != null
+                          ? widget?.selectedStation?.components[0].caqi
+                          : 0))
                   .color,
             ),
           )
