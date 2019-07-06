@@ -101,40 +101,7 @@ class _MapWidgetState extends State<MapWidget> {
 
   void loadData() async {
     _mapStyle = await rootBundle.loadString('assets/map_style.txt');
-    // addMarkers();
   }
-
-  // void addMarkers() async {
-  //   List<ProcessedStation> processedStations =
-  //       await measurementDataService.fetchAndProcessStations();
-
-  //   widget.setStation(null, processedStations[0]);
-
-  //   processedStations.forEach((s) async {
-  //     final Uint8List markerIcon = await MapIconService.createIcon(
-  //         s.components[0].caqi,
-  //         measurementDataService.caqiToColorRGBA(s.components[0].caqi));
-  //     final MarkerId markerId = MarkerId(s.station);
-
-  //     final Marker marker = Marker(
-  //         markerId: markerId,
-  //         position: LatLng(
-  //           s.latitude,
-  //           s.longitude,
-  //         ),
-  //         icon: BitmapDescriptor.fromBytes(markerIcon),
-  //         onTap: () {
-  //           widget.setStation(
-  //               markerId,
-  //               processedStations
-  //                   .firstWhere((y) => y.station == markerId.value));
-  //         });
-
-  //     setState(() {
-  //       markers[markerId] = marker;
-  //     });
-  //   });
-  // }
 
   @override
   Widget build(BuildContext context) {
@@ -154,8 +121,6 @@ class _MapWidgetState extends State<MapWidget> {
 }
 
 class OverlayWidget extends StatefulWidget {
-  OverlayWidget({this.selectedStation});
-  final ProcessedStation selectedStation;
   @override
   _OverlayWidgetState createState() => _OverlayWidgetState();
 }
@@ -164,115 +129,114 @@ class _OverlayWidgetState extends State<OverlayWidget> {
   var data = [0.0, 1.0, 1.5, 2.0, 0.0, 0.0, -0.5, -1.0, -0.5, 0.0, 0.0];
   @override
   Widget build(BuildContext context) {
-    return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          SizedBox(
-            height: 19.0,
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              Container(
-                width: 18,
-                height: 3,
-                decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.all(Radius.circular(5.0))),
-              ),
-            ],
-          ),
-          SizedBox(
-            height: 10.0,
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 0, horizontal: 20),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.start,
+    final StationListBloc bloc = BlocProvider.of<StationListBloc>(context);
+    return StreamBuilder<ProcessedStation>(
+        stream: bloc.selectedStation,
+        builder: (context, snapshot) {
+          return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(
-                  widget?.selectedStation?.station != null
-                      ? widget?.selectedStation?.station
-                      : '',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w400,
-                      letterSpacing: 0.3,
-                      fontSize: 17.0,
-                      color: Colors.black87),
+                SizedBox(
+                  height: 19.0,
                 ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 0, horizontal: 20),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  widget?.selectedStation?.station != null
-                      ? measurementDataService.caqiToText(
-                          widget?.selectedStation?.components[0].caqi)
-                      : '',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w200,
-                      fontSize: 34.0,
-                      color: TinyColor.fromString(
-                              measurementDataService.caqiToColorRGBA(
-                                  widget?.selectedStation?.station != null
-                                      ? widget
-                                          ?.selectedStation?.components[0].caqi
-                                      : 0))
-                          .color),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    Container(
+                      width: 18,
+                      height: 3,
+                      decoration: BoxDecoration(
+                          color: Colors.grey[300],
+                          borderRadius: BorderRadius.all(Radius.circular(5.0))),
+                    ),
+                  ],
+                ),
+                SizedBox(
+                  height: 10.0,
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 15, 0, 0),
-                  child: Text(
-                    'air quality',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w300,
-                        letterSpacing: 0.6,
-                        fontSize: 14.0,
-                        color: TinyColor.fromString('#a5a5a5').color),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 0, horizontal: 20),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        snapshot?.data?.station ?? '',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w400,
+                            letterSpacing: 0.3,
+                            fontSize: 17.0,
+                            color: Colors.black87),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-          ),
-          SizedBox(
-            height: 20.0,
-          ),
-          Divider(
-            color: TinyColor.fromString('#e5e5e5').color,
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 15, 0, 0),
-            child: Text(
-              'PM2.5',
-              style: TextStyle(
-                  fontWeight: FontWeight.w500,
-                  letterSpacing: 0.6,
-                  fontSize: 14.0,
-                  color: TinyColor.fromString('#333').color),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(25.0),
-            child: Sparkline(
-              data: data,
-              fillMode: FillMode.below,
-              lineColor: TinyColor.fromString(measurementDataService
-                      .caqiToColorRGBA(widget?.selectedStation?.station != null
-                          ? widget?.selectedStation?.components[0].caqi
-                          : 0))
-                  .darken(5)
-                  .color,
-              fillColor: TinyColor.fromString(measurementDataService
-                      .caqiToColorRGBA(widget?.selectedStation?.station != null
-                          ? widget?.selectedStation?.components[0].caqi
-                          : 0))
-                  .color,
-            ),
-          )
-        ]);
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 0, horizontal: 20),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        measurementDataService.caqiToText(
+                            snapshot?.data?.components?.first?.caqi ?? 0),
+                        style: TextStyle(
+                            fontWeight: FontWeight.w200,
+                            fontSize: 34.0,
+                            color: TinyColor.fromString(measurementDataService
+                                    .caqiToColorRGBA(snapshot
+                                            ?.data?.components?.first?.caqi ??
+                                        0))
+                                .color),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(8, 15, 0, 0),
+                        child: Text(
+                          'air quality',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w300,
+                              letterSpacing: 0.6,
+                              fontSize: 14.0,
+                              color: TinyColor.fromString('#a5a5a5').color),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  height: 20.0,
+                ),
+                Divider(
+                  color: TinyColor.fromString('#e5e5e5').color,
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 15, 0, 0),
+                  child: Text(
+                    'PM2.5',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0.6,
+                        fontSize: 14.0,
+                        color: TinyColor.fromString('#333').color),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(25.0),
+                  child: Sparkline(
+                    data: data,
+                    fillMode: FillMode.below,
+                    lineColor: TinyColor.fromString(
+                            measurementDataService.caqiToColorRGBA(
+                                snapshot?.data?.components?.first?.caqi ?? 0))
+                        .darken(5)
+                        .color,
+                    fillColor: TinyColor.fromString(
+                            measurementDataService.caqiToColorRGBA(
+                                snapshot?.data?.components?.first?.caqi ?? 0))
+                        .color,
+                  ),
+                )
+              ]);
+        });
   }
 }

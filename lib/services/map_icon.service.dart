@@ -7,7 +7,8 @@ import 'dart:ui' as ui;
 import 'package:tinycolor/tinycolor.dart';
 
 class MapIconService {
-  static Future<Uint8List> createIcon(int value, String color) async {
+  static Future<Uint8List> createIcon(int value, String color,
+      [bool isActive = false]) async {
     final double width = 120;
     final double height = 120;
     final colorBackground =
@@ -20,9 +21,10 @@ class MapIconService {
       ..color = colorBackground
       ..style = PaintingStyle.fill;
     final paintStroke = Paint()
-      ..color = TinyColor(colorBackground).darken(5).color
+      ..color =
+          isActive ? Colors.white : TinyColor(colorBackground).darken(5).color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
+      ..strokeWidth = isActive ? 5 : 2;
     final painter = TextPainter(
         textDirection: TextDirection.ltr, textAlign: TextAlign.center);
     final center = new Offset(width / 2, height / 2);
