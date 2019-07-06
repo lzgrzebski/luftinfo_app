@@ -1,10 +1,11 @@
-import 'package:luftinfo_app/bloc_provider.dart';
-import 'package:rxdart/rxdart.dart';
 import 'dart:typed_data';
-
-import 'package:luftinfo_app/models/processed_station.dart';
-import 'package:luftinfo_app/services/measurementdata.serivce.dart';
+import 'package:luftinfo_app/models/station.dart';
+import 'package:luftinfo_app/models/station_list.dart';
+import 'package:rxdart/rxdart.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+
+import 'package:luftinfo_app/bloc_provider.dart';
+import 'package:luftinfo_app/services/measurementdata.serivce.dart';
 import 'package:luftinfo_app/services/map_icon.service.dart';
 
 class StationListBloc implements BlocBase {
@@ -12,33 +13,31 @@ class StationListBloc implements BlocBase {
     fetchStations();
   }
 
-  final _stations = BehaviorSubject<List<ProcessedStation>>.seeded([]);
+  final _stations = BehaviorSubject<Map<String, Station>>.seeded({});
   final _markers = BehaviorSubject<Map<MarkerId, Marker>>.seeded({});
   final _selectedStationId = BehaviorSubject<String>();
   String selectedMarkerId;
 
-  ValueObservable<List<ProcessedStation>> get stations => _stations.stream;
+  ValueObservable<Map<String, Station>> get stations => _stations.stream;
   ValueObservable<Map<MarkerId, Marker>> get markers => _markers.stream;
   ValueObservable<String> get selectedStationId => _selectedStationId.stream;
 
-  Observable<ProcessedStation> get selectedStation =>
+  Observable<Station> get selectedStation =>
       selectedStationId.transform(WithLatestFromStreamTransformer(
           CombineLatestStream.list([markers, stations]), (id, data) {
         updateActiveMarker(id, data.first, data.last);
-        final activeStation = data.last.firstWhere((s) => s.station == id);
-        return activeStation;
+        return data.last[id];
       }));
 
   Future<void> fetchStations() async {
-    List<ProcessedStation> processedStations =
-        await measurementDataService.fetchAndProcessStations();
+    StationsList stationList = await measurementDataService.fetchStations();
 
     Map<MarkerId, Marker> processedMarkers = <MarkerId, Marker>{};
 
-    _stations.sink.add(processedStations);
-    _selectedStationId.sink.add(processedStations[0].station);
+    _stations.sink.add(stationList.stations);
+    _selectedStationId.sink.add(stationList.stations.values.first.station);
 
-    await Future.forEach(processedStations, (s) async {
+    await Future.forEach(stationList.stations.values, (s) async {
       final Uint8List markerIcon = await MapIconService.createIcon(
           s.components[0].caqi,
           measurementDataService.caqiToColorRGBA(s.components[0].caqi));
@@ -58,24 +57,22 @@ class StationListBloc implements BlocBase {
       _markers.sink.add(processedMarkers);
     });
 
-    _selectedStationId.sink.add(processedStations[0].station);
+    _selectedStationId.sink.add(stationList.stations.values.first.station);
   }
 
   void updateActiveMarker(String id, Map<MarkerId, Marker> markers,
-      List<ProcessedStation> stations) async {
+      Map<String, Station> stations) async {
     final MarkerId tappedMarkerId = MarkerId(id);
     final Marker tappedMarker = markers[tappedMarkerId];
     if (tappedMarker == null) {
       return;
     }
 
-    final ProcessedStation tappedStation =
-        stations.firstWhere((s) => s.station == id);
+    final Station tappedStation = stations[id];
     if (selectedMarkerId != null &&
         markers.containsKey(MarkerId(selectedMarkerId))) {
       final oldMarkerId = MarkerId(selectedMarkerId);
-      final oldStation =
-          stations.firstWhere((s) => s.station == selectedMarkerId);
+      final oldStation = stations[selectedMarkerId];
       final Marker resetOld = markers[oldMarkerId]
           .copyWith(iconParam: await createIcon(oldStation));
       markers[oldMarkerId] = resetOld;
@@ -88,7 +85,7 @@ class StationListBloc implements BlocBase {
     _markers.sink.add(markers);
   }
 
-  Future<BitmapDescriptor> createIcon(ProcessedStation station,
+  Future<BitmapDescriptor> createIcon(Station station,
       [bool isActive = false]) async {
     final icon = await MapIconService.createIcon(
         station.components[0].caqi,

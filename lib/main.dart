@@ -1,22 +1,17 @@
 import 'dart:async';
-import 'dart:convert';
-
-import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:luftinfo_app/bloc_provider.dart';
-import 'package:luftinfo_app/blocs/station_list.bloc.dart';
 import 'package:sliding_up_panel/sliding_up_panel.dart';
 import 'package:flutter_sparkline/flutter_sparkline.dart';
-
-import 'package:luftinfo_app/services/map_icon.service.dart';
-import 'package:luftinfo_app/services/measurementdata.serivce.dart';
-import 'package:luftinfo_app/models/station_list.dart';
-import 'package:luftinfo_app/models/processed_station.dart';
 import 'package:tinycolor/tinycolor.dart';
+
+import 'package:luftinfo_app/bloc_provider.dart';
+import 'package:luftinfo_app/blocs/station_list.bloc.dart';
+import 'package:luftinfo_app/services/measurementdata.serivce.dart';
+
+import 'models/station.dart';
 
 Future<void> main() async {
   return runApp(
@@ -130,7 +125,7 @@ class _OverlayWidgetState extends State<OverlayWidget> {
   @override
   Widget build(BuildContext context) {
     final StationListBloc bloc = BlocProvider.of<StationListBloc>(context);
-    return StreamBuilder<ProcessedStation>(
+    return StreamBuilder<Station>(
         stream: bloc.selectedStation,
         builder: (context, snapshot) {
           return Column(

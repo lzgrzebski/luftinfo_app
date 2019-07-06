@@ -1,7 +1,5 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:luftinfo_app/models/processed_station.dart';
-import 'package:luftinfo_app/models/station_component.dart';
 
 import 'package:luftinfo_app/models/station_list.dart';
 import 'package:luftinfo_app/models/caqi.dart';
@@ -10,6 +8,11 @@ class MeasurementDataService {
   static const CACHING_SERVER_URL = 'https://probably.one:4433/ttl3600?';
   static const NILU_LAST_HOUR =
       'https://api.nilu.no/obs/utd?components=no2;pm10;so2;co;o3;pm2.5';
+  static const List<String> TS_KEYS = ['HAK5BXQD3XUH8ZL7', '8NRVSJZ6IZSEIKWN'];
+  static const TS_URL_CHANNELS =
+      'https://api.thingspeak.com/channels.json?api_key=';
+  static const TS_URL0 = 'https://api.thingspeak.com/channels/';
+  static const TS_URL1 = '/feeds.json?average=60&round=2&results=1';
 
   static final List<CAQI> caqiTable = [
     CAQI(
@@ -50,44 +53,39 @@ class MeasurementDataService {
         hi: [350, 500, 75, 100]),
   ];
 
-  Future<List<ProcessedStation>> fetchAndProcessStations() async {
-    StationsList stationsList = await fetchStations();
-
-    stationsList.stations.forEach((s) {
-      int c = caqi(s.component, s.value);
-      StationComponent stationComponent =
-          StationComponent(name: s.component, value: s.value, caqi: c);
-      int x = stationsList.processedStations
-          .indexWhere((y) => y.station == s.station);
-      if (x == -1) {
-        return stationsList.processedStations.add(
-          ProcessedStation(
-              station: s.station,
-              latitude: s.latitude,
-              longitude: s.longitude,
-              components: [stationComponent]),
-        );
-      }
-
-      if (c > stationsList.processedStations[x].components[0].caqi) {
-        stationsList.processedStations[x].components
-            .insert(0, stationComponent);
-      } else {
-        stationsList.processedStations[x].components.add(stationComponent);
-      }
-    });
-
-    return stationsList.processedStations;
-  }
-
   Future<StationsList> fetchStations() async {
     final response = await http.get(CACHING_SERVER_URL + NILU_LAST_HOUR);
     if (response.statusCode == 200) {
       return StationsList.fromJson(
           json.decode(utf8.decode(response.bodyBytes)));
     } else {
-      throw Exception('Failed to fetch stations');
+      throw Exception('Failed to fetch NILU stations');
     }
+  }
+
+  Future<List> fetchTsStationsIds() async {
+    return await Future.wait(
+        TS_KEYS.map((k) => http.get(TS_URL_CHANNELS + k).then((response) {
+              if (response.statusCode == 200) {
+                return json
+                    .decode(utf8.decode(response.bodyBytes))
+                    .map((d) => d.id);
+              } else {
+                throw Exception('Failed to load TS data from $k channel');
+              }
+            }))).then((tsStations) => tsStations.expand((x) => x).toList());
+  }
+
+  fetchTsStations() async {
+    final stationIds = await fetchTsStationsIds();
+    Future.wait(stationIds.map((id) =>
+        http.get(CACHING_SERVER_URL + TS_URL0 + id + TS_URL1).then((response) {
+          if (response.statusCode == 200) {
+            return json.decode(utf8.decode(response.bodyBytes));
+          } else {
+            throw Exception('Failed to load TS data for $id');
+          }
+        })));
   }
 
   int caqi(String pollutant, double value) {
