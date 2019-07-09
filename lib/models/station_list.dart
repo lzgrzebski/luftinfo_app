@@ -9,16 +9,26 @@ class StationsList {
     this.stations,
   });
 
-  factory StationsList.fromJson(List<dynamic> parsedNiluJson) {
-    final Map<String, Station> normalizedNiluStations =
-        parsedNiluJson.fold(<Station>[], (List<Station> stationsAcc, s) {
+  factory StationsList.fromJson(
+      List<dynamic> parsedNiluJson, List<dynamic> parsedTsJson) {
+    return new StationsList(
+      stations: {
+        ...normalizeTsStations(parsedTsJson),
+        ...normalizeNiluStations(parsedNiluJson)
+      },
+    );
+  }
+
+  static Map<String, Station> normalizeNiluStations(
+      List<dynamic> parsedNiluJson) {
+    return parsedNiluJson.fold(<Station>[], (List<Station> stationsAcc, s) {
       int c = measurementDataService.caqi(s['component'], s['value']);
       StationComponent stationComponent =
           StationComponent(name: s['component'], value: s['value'], caqi: c);
       int x = stationsAcc.indexWhere((y) => y.station == s['station']);
       if (x == -1) {
         s['components'] = [stationComponent];
-        stationsAcc.add(Station.fromJson(s));
+        stationsAcc.add(Station.fromNiluJson(s));
         return stationsAcc;
       }
 
@@ -32,9 +42,39 @@ class StationsList {
       stationsAcc[s.station] = s;
       return stationsAcc;
     });
+  }
 
-    return new StationsList(
-      stations: normalizedNiluStations,
-    );
+  static Map<String, Station> normalizeTsStations(List<dynamic> parsedTsJson) {
+    return parsedTsJson.fold({}, (Map<String, Station> stationsAcc, s) {
+      if (s != -1 &&
+          s['channel'] != null &&
+          s['channel']['name'] != null &&
+          s['feeds'].length > 0) {
+        s['components'] = [
+          StationComponent(
+              name: s['channel']['field1'],
+              value: double.parse(s['feeds'][s['feeds'].length - 1]['field1']),
+              caqi: measurementDataService.caqi(s['channel']['field1'],
+                  double.parse(s['feeds'][s['feeds'].length - 1]['field1']))),
+          StationComponent(
+              name: s['channel']['field2'],
+              value: double.parse(s['feeds'][s['feeds'].length - 1]['field2']),
+              caqi: measurementDataService.caqi(s['channel']['field2'],
+                  double.parse(s['feeds'][s['feeds'].length - 1]['field2']))),
+          // StationComponent(
+          //     name: s['channel']['field3'],
+          //     value: double.parse(s['feeds'][s['feeds'].length - 1]['field3']),
+          //     caqi: measurementDataService.caqi(s['channel']['field3'],
+          //         double.parse(s['feeds'][s['feeds'].length - 1]['field3']))),
+          // StationComponent(
+          //     name: s['channel']['field4'],
+          //     value: double.parse(s['feeds'][s['feeds'].length - 1]['field4']),
+          //     caqi: measurementDataService.caqi(s['channel']['field4'],
+          //         double.parse(s['feeds'][s['feeds'].length - 1]['field4']))),
+        ];
+        stationsAcc[s['channel']['name']] = Station.fromTsJson(s);
+      }
+      return stationsAcc;
+    });
   }
 }

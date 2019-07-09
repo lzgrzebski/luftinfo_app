@@ -54,32 +54,39 @@ class MeasurementDataService {
   ];
 
   Future<StationsList> fetchStations() async {
+    final tsStationsIds = await fetchTsStationsIds();
+    final stations = await Future.wait(
+        [fetchNiluStations(), fetchTsStations(tsStationsIds)]);
+    return StationsList.fromJson(stations.first, stations.last);
+  }
+
+  Future<List> fetchNiluStations() async {
     final response = await http.get(CACHING_SERVER_URL + NILU_LAST_HOUR);
     if (response.statusCode == 200) {
-      return StationsList.fromJson(
-          json.decode(utf8.decode(response.bodyBytes)));
+      return json.decode(utf8.decode(response.bodyBytes));
     } else {
       throw Exception('Failed to fetch NILU stations');
     }
   }
 
-  Future<List> fetchTsStationsIds() async {
-    return await Future.wait(
+  Future<List<int>> fetchTsStationsIds() async {
+    return Future.wait(
         TS_KEYS.map((k) => http.get(TS_URL_CHANNELS + k).then((response) {
               if (response.statusCode == 200) {
                 return json
                     .decode(utf8.decode(response.bodyBytes))
-                    .map((d) => d.id);
+                    .map<int>((d) => d['id'] as int)
+                    .toList() as List<int>;
               } else {
                 throw Exception('Failed to load TS data from $k channel');
               }
             }))).then((tsStations) => tsStations.expand((x) => x).toList());
   }
 
-  fetchTsStations() async {
-    final stationIds = await fetchTsStationsIds();
-    Future.wait(stationIds.map((id) =>
-        http.get(CACHING_SERVER_URL + TS_URL0 + id + TS_URL1).then((response) {
+  Future<List> fetchTsStations(List<int> stationIds) async {
+    return Future.wait(stationIds.map((id) => http
+            .get(CACHING_SERVER_URL + TS_URL0 + id.toString() + TS_URL1)
+            .then((response) {
           if (response.statusCode == 200) {
             return json.decode(utf8.decode(response.bodyBytes));
           } else {

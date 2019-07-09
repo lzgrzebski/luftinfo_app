@@ -1,13 +1,12 @@
 import 'package:luftinfo_app/models/station_component.dart';
 
 class Station {
-  final String name;
+  final String station;
   final double latitude;
   final double longitude;
   final List<StationComponent> components;
 
   //NILU
-  final String station;
   final String zone;
   final String municipality;
   final String area;
@@ -23,8 +22,7 @@ class Station {
   final String version;
 
   Station(
-      {this.name,
-      this.latitude,
+      {this.latitude,
       this.longitude,
       this.components,
       this.station,
@@ -40,20 +38,27 @@ class Station {
       this.uptimeSeconds,
       this.version});
 
-  factory Station.fromJson(Map<String, dynamic> json) {
+  factory Station.fromNiluJson(Map<String, dynamic> json) {
     return new Station(
-      name: json['station'],
+      station: json['station'],
       latitude: json['latitude'],
       longitude: json['longitude'],
       components: json['components'],
       zone: json['zone'],
       municipality: json['municipality'],
       area: json['area'],
-      station: json['station'],
       eoi: json['eoi'],
       fromTime: json['fromTime'],
       toTime: json['toTime'],
       timestep: json['timestep'],
     );
+  }
+
+  factory Station.fromTsJson(Map<String, dynamic> json) {
+    return new Station(
+        station: json['channel']['name'],
+        latitude: double.parse(json['channel']['latitude']),
+        longitude: double.parse(json['channel']['longitude']),
+        components: json['components']);
   }
 }
