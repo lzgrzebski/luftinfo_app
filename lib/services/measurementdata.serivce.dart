@@ -1,6 +1,9 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 
+import 'package:luftinfo_app/models/station.dart';
+import 'package:luftinfo_app/models/station_details.dart';
 import 'package:luftinfo_app/models/station_list.dart';
 import 'package:luftinfo_app/models/caqi.dart';
 
@@ -13,6 +16,8 @@ class MeasurementDataService {
       'https://api.thingspeak.com/channels.json?api_key=';
   static const TS_URL0 = 'https://api.thingspeak.com/channels/';
   static const TS_URL1 = '/feeds.json?average=60&round=2&results=1';
+
+  http.Client httpClient;
 
   static final List<CAQI> caqiTable = [
     CAQI(
@@ -54,14 +59,17 @@ class MeasurementDataService {
   ];
 
   Future<StationsList> fetchStations() async {
+    this.httpClient = new http.Client();
     final tsStationsIds = await fetchTsStationsIds();
     final stations = await Future.wait(
         [fetchNiluStations(), fetchTsStations(tsStationsIds)]);
+    this.httpClient.close();
     return StationsList.fromJson(stations.first, stations.last);
   }
 
   Future<List> fetchNiluStations() async {
-    final response = await http.get(CACHING_SERVER_URL + NILU_LAST_HOUR);
+    final response =
+        await this.httpClient.get(CACHING_SERVER_URL + NILU_LAST_HOUR);
     if (response.statusCode == 200) {
       return json.decode(utf8.decode(response.bodyBytes));
     } else {
@@ -84,7 +92,8 @@ class MeasurementDataService {
   }
 
   Future<List> fetchTsStations(List<int> stationIds) async {
-    return Future.wait(stationIds.map((id) => http
+    return Future.wait(stationIds.map((id) => this
+            .httpClient
             .get(CACHING_SERVER_URL + TS_URL0 + id.toString() + TS_URL1)
             .then((response) {
           if (response.statusCode == 200) {
@@ -93,6 +102,26 @@ class MeasurementDataService {
             throw Exception('Failed to load TS data for $id');
           }
         })));
+  }
+
+  Future<StationDetails> fetchStationDetails(Station s) async {
+    DateTime now = DateTime.now();
+    DateTime yesterday = now.subtract(Duration(days: 1));
+    DateTime tomorrow = now.add(Duration(days: 1));
+    final id = s.type == StationType.nilu ? s.station : s.id;
+    final response = await http
+        .get(createStationDetailsUrl(id, s.type, yesterday, tomorrow, true));
+    if (response.statusCode == 200) {
+      if (s.type == StationType.nilu) {
+        return StationDetails.fromNiluJson(
+            json.decode(utf8.decode(response.bodyBytes)));
+      }
+
+      return StationDetails.fromTsJson(
+          json.decode(utf8.decode(response.bodyBytes)));
+    } else {
+      throw Exception('Failed to fetch station details');
+    }
   }
 
   int caqi(String pollutant, double value) {
@@ -134,6 +163,35 @@ class MeasurementDataService {
     if (caqi < 75) return 'Moderate';
     if (caqi < 100) return 'Bad';
     return 'Very bad';
+  }
+
+  createStationDetailsUrl(dynamic id, StationType type, DateTime startTime,
+      DateTime endTime, bool isSingleDay) {
+    const CACHING_SERVER_URL = 'https://probably.one:4433/';
+    const NILU_URL_HOURLY = 'https://api.nilu.no/obs/historical/';
+    const NILU_URL_DAILY = 'https://api.nilu.no/stats/day/';
+    const NILU_URL_ARGS = '?timestep=3600&components=no2;pm10;so2;co;o3;pm2.5';
+    const TS_URL_D0 = 'https://api.thingspeak.com/channels/';
+    const TS_URL_H0 = 'https://api.thingspeak.com/channels/';
+    const TS_URL_D1 = '/feeds.json?average=daily&round=2';
+    const TS_URL_H1 = '/feeds.json?average=60&round=2';
+    final DateFormat formatter = DateFormat('yyyy-MM-dd');
+
+    String s = CACHING_SERVER_URL;
+    s += isSingleDay || endTime.isAfter(DateTime.now()) ? 'ttl3600?' : 'store?';
+    if (type == StationType.nilu) {
+      s += !isSingleDay ? NILU_URL_DAILY : NILU_URL_HOURLY;
+      s += formatter.format(startTime) + '/';
+      s += formatter.format(endTime) + '/' + id + NILU_URL_ARGS;
+    } else if (type == StationType.ts) {
+      s += !isSingleDay
+          ? TS_URL_D0 + id.toString() + TS_URL_D1
+          : TS_URL_H0 + id.toString() + TS_URL_H1;
+      s += '&start=' + formatter.format(startTime);
+      s += '&end=' + formatter.format(endTime.subtract(Duration(hours: 1)));
+    }
+
+    return s;
   }
 }
 

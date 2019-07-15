@@ -4,14 +4,11 @@ import 'package:flutter/material.dart';
 
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:sliding_up_panel/sliding_up_panel.dart';
-import 'package:flutter_sparkline/flutter_sparkline.dart';
-import 'package:tinycolor/tinycolor.dart';
 
+import 'package:luftinfo_app/widgets/map/location_btn.dart';
+import 'package:luftinfo_app/widgets/station_details/overlay.dart';
 import 'package:luftinfo_app/bloc_provider.dart';
 import 'package:luftinfo_app/blocs/station_list.bloc.dart';
-import 'package:luftinfo_app/services/measurementdata.serivce.dart';
-
-import 'models/station.dart';
 
 Future<void> main() async {
   return runApp(
@@ -63,6 +60,11 @@ class _MyHomePageState extends State<MyHomePage> {
             borderRadius: BorderRadius.only(
                 topLeft: Radius.circular(4.0), topRight: Radius.circular(4.0)),
           ),
+          Positioned(
+            right: 20.0,
+            top: 60.0,
+            child: LocationBtn(),
+          ),
         ],
       ),
     );
@@ -70,23 +72,15 @@ class _MyHomePageState extends State<MyHomePage> {
 }
 
 class MapWidget extends StatefulWidget {
-  MapWidget({this.setStation});
-  final setStation;
+  MapWidget();
 
   @override
   _MapWidgetState createState() => _MapWidgetState();
 }
 
 class _MapWidgetState extends State<MapWidget> {
-  static final CameraPosition _cameraPosition = CameraPosition(
-    target: LatLng(59.927454, 10.733687),
-    zoom: 11,
-  );
-
   String _mapStyle;
-
-  Map<MarkerId, Marker> markers = <MarkerId, Marker>{};
-  MarkerId selectedMarker;
+  LatLng _currentLocation;
 
   @override
   void initState() {
@@ -101,137 +95,30 @@ class _MapWidgetState extends State<MapWidget> {
   @override
   Widget build(BuildContext context) {
     final StationListBloc bloc = BlocProvider.of<StationListBloc>(context);
+    final Completer<GoogleMapController> _mapControllerCompleter = Completer();
+
+    bloc.currentLocation.listen((location) async {
+      _currentLocation = location;
+      GoogleMapController mapController = await _mapControllerCompleter.future;
+      mapController.moveCamera(CameraUpdate.newCameraPosition(
+          CameraPosition(target: location, zoom: 13)));
+    });
     return StreamBuilder<Map<MarkerId, Marker>>(
         stream: bloc.markers,
         builder: (context, snapshot) {
           return GoogleMap(
-            initialCameraPosition: _cameraPosition,
+            initialCameraPosition: CameraPosition(
+              target: _currentLocation ?? LatLng(59.927454, 10.733687),
+              zoom: 11,
+            ),
             onMapCreated: (GoogleMapController controller) {
               controller.setMapStyle(_mapStyle);
+              if (!_mapControllerCompleter.isCompleted) {
+                _mapControllerCompleter.complete(controller);
+              }
             },
             markers: Set<Marker>.of(snapshot?.data?.values ?? []),
           );
-        });
-  }
-}
-
-class OverlayWidget extends StatefulWidget {
-  @override
-  _OverlayWidgetState createState() => _OverlayWidgetState();
-}
-
-class _OverlayWidgetState extends State<OverlayWidget> {
-  var data = [0.0, 1.0, 1.5, 2.0, 0.0, 0.0, -0.5, -1.0, -0.5, 0.0, 0.0];
-  @override
-  Widget build(BuildContext context) {
-    final StationListBloc bloc = BlocProvider.of<StationListBloc>(context);
-    return StreamBuilder<Station>(
-        stream: bloc.selectedStation,
-        builder: (context, snapshot) {
-          return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                SizedBox(
-                  height: 19.0,
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: <Widget>[
-                    Container(
-                      width: 18,
-                      height: 3,
-                      decoration: BoxDecoration(
-                          color: Colors.grey[300],
-                          borderRadius: BorderRadius.all(Radius.circular(5.0))),
-                    ),
-                  ],
-                ),
-                SizedBox(
-                  height: 10.0,
-                ),
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 0, horizontal: 20),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        snapshot?.data?.station ?? '',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w400,
-                            letterSpacing: 0.3,
-                            fontSize: 17.0,
-                            color: Colors.black87),
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 0, horizontal: 20),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        measurementDataService.caqiToText(
-                            snapshot?.data?.components?.first?.caqi ?? 0),
-                        style: TextStyle(
-                            fontWeight: FontWeight.w200,
-                            fontSize: 34.0,
-                            color: TinyColor.fromString(measurementDataService
-                                    .caqiToColorRGBA(snapshot
-                                            ?.data?.components?.first?.caqi ??
-                                        0))
-                                .color),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(8, 15, 0, 0),
-                        child: Text(
-                          'air quality',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w300,
-                              letterSpacing: 0.6,
-                              fontSize: 14.0,
-                              color: TinyColor.fromString('#a5a5a5').color),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(
-                  height: 20.0,
-                ),
-                Divider(
-                  color: TinyColor.fromString('#e5e5e5').color,
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 15, 0, 0),
-                  child: Text(
-                    'PM2.5',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0.6,
-                        fontSize: 14.0,
-                        color: TinyColor.fromString('#333').color),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(25.0),
-                  child: Sparkline(
-                    data: data,
-                    fillMode: FillMode.below,
-                    lineColor: TinyColor.fromString(
-                            measurementDataService.caqiToColorRGBA(
-                                snapshot?.data?.components?.first?.caqi ?? 0))
-                        .darken(5)
-                        .color,
-                    fillColor: TinyColor.fromString(
-                            measurementDataService.caqiToColorRGBA(
-                                snapshot?.data?.components?.first?.caqi ?? 0))
-                        .color,
-                  ),
-                )
-              ]);
         });
   }
 }
