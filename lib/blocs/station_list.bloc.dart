@@ -35,7 +35,7 @@ class StationListBloc implements BlocBase {
       _selectedStationDetails.stream;
 
   Observable<Station> get selectedStation =>
-      selectedStationId.transform(WithLatestFromStreamTransformer(
+      selectedStationId.transform(WithLatestFromStreamTransformer.with1(
           CombineLatestStream.list([markers, stations]), (id, data) {
         updateActiveMarker(id, data.first, data.last);
         fetchStationDetails(data.last[id]);
@@ -43,7 +43,7 @@ class StationListBloc implements BlocBase {
       }));
 
   Observable<LatLng> get currentLocation =>
-      _currentLocation.stream.transform(WithLatestFromStreamTransformer(
+      _currentLocation.stream.transform(WithLatestFromStreamTransformer.with1(
           CombineLatestStream.list([markers, stations]), (l, data) {
         selectClosestMarker(l, data.first, data.last);
         return l;
